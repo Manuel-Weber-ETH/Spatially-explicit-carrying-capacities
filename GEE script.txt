@@ -1,0 +1,91 @@
+// SENTINEL2
+
+// Define the area of interest using a shapefile
+var geometry = ee.FeatureCollection('users/manuelweber/Onguma_EPSG_4326');
+
+// Filter Sentinel-2B imagery for the specified date range and cloud cover
+var sentinel2 = ee.ImageCollection('COPERNICUS/S2')
+  .filterBounds(geometry)
+  .filterDate('2023-01-01', '2023-06-25') // Adjust the date range as needed
+  .filterMetadata('CLOUDY_PIXEL_PERCENTAGE', 'less_than', 1); // Adjust the cloud cover percentage as needed
+
+// Select the first image in the collection
+var image = ee.Image(sentinel2.first());
+
+// Clip the image to the specified geometry
+var clippedImage = image.clip(geometry);
+
+// Select the bands of interest
+var bands = ['B2', 'B3', 'B4', 'B5', 'B6', 'B7', 'B8', 'B11', 'B12']; // Adjust the band selection as needed
+
+// Select the desired bands from the clipped image
+var selectedBands = clippedImage.select(bands);
+
+// Define export parameters
+var exportParams = {
+  image: selectedBands,
+  description: 'Sentinel-2_Image',
+  scale: 10, // Adjust the scale as needed based on the desired resolution
+  region: geometry.geometry().bounds()
+};
+
+// Export the image to Google Drive
+Export.image.toDrive(exportParams);
+
+// SENTINEL1
+
+var sentinel1 = ee.ImageCollection("COPERNICUS/S1_GRD");
+
+// Define the area of interest using a shapefile
+var geometry = ee.FeatureCollection('users/manuelweber/Onguma_EPSG_4326');
+
+// Filter Sentinel-1 imagery for the specified date range
+var sentinel1 = ee.ImageCollection('COPERNICUS/S1_GRD')
+  .filterBounds(geometry)
+  .filterDate('2021-02-01', '2023-05-31'); // Adjust the date range as needed
+
+// Sort the Sentinel-1 image collection in descending order based on acquisition date
+var sortedSentinel1 = sentinel1;
+
+// Define a function to check if an image fully covers the geometry
+var checkCoverage = function(image) {
+  var clippedImage = image.clip(geometry);
+  var isFullyCovered = clippedImage.geometry().contains(geometry);
+  return image.set('isFullyCovered', isFullyCovered);
+};
+
+// Map over the image collection to check coverage for each image
+var sentinel1WithCoverage = sortedSentinel1.map(checkCoverage);
+
+// Filter the images that fully cover the geometry
+var fullyCoveredSentinel1 = sentinel1WithCoverage.filter(ee.Filter.eq('isFullyCovered', true));
+
+// Check if the filtered collection is empty
+var imageCount = fullyCoveredSentinel1.size();
+var sentinel1Image = ee.Image(ee.Algorithms.If(imageCount.gt(0), fullyCoveredSentinel1.first(), ee.Image()));
+
+// Clip the image to the specified geometry
+var clippedSentinel1 = sentinel1Image.clip(geometry.geometry().bounds());
+
+// Print the band names to the console
+print('Band Names:', clippedSentinel1.bandNames());
+
+// Check if the clipped image has any bands
+var bandNames = clippedSentinel1.bandNames();
+var hasBands = bandNames.size().gt(0);
+var selectedSentinel1Bands = ee.Image(ee.Algorithms.If(hasBands, clippedSentinel1.select(bandNames), ee.Image()));
+
+// Cast the bands to Float64
+var selectedSentinel1Bands = selectedSentinel1Bands.toFloat();
+
+// Define export parameters
+var exportParams = {
+  image: selectedSentinel1Bands,
+  description: 'Sentinel1_Image',
+  scale: 10, // Adjust the scale as needed based on the desired resolution
+  region: geometry.geometry().bounds(),
+  crs: 'EPSG:4326' // Set the coordinate reference system to EPSG:4326
+};
+
+// Export the image to Google Drive
+Export.image.toDrive(exportParams);
